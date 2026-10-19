@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Retro Pong Arcade</title>
+    <!-- Tailwind CSS per layout e UI del menu -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+        body {
+            font-family: 'Press Start 2P', cursive;
+            background-color: #050505;
+            color: #00ff66;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        /* Effetto Monitor CRT Scanlines */
+        .crt::after {
+            content: " ";
+            display: block;
+            position: absolute;
+            top: 0; left: 0; bottom: 0; right: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03));
+            z-index: 20;
+            background-size: 100% 3px, 6px 100%;
+            pointer-events: none;
+        }
+
+        /* Bagliore Neon */
+        .neon-text {
+            text-shadow: 0 0 5px #00ff66, 0 0 10px #00ff66, 0 0 20px #00ff66;
+        }
+
+        .neon-border {
+            box-shadow: 0 0 10px #00ff66, inset 0 0 10px #00ff66;
+        }
+
+        .btn-retro {
+            transition: all 0.15s ease;
+            border: 2px solid #00ff66;
+            background: #001100;
+        }
+
+        .btn-retro:hover {
+            background: #00ff66;
+            color: #000000;
+            box-shadow: 0 0 15px #00ff66;
+        }
+
+        canvas {
+            image-rendering: pixelated;
+        }
+    </style>
+</head>
+<body class="w-screen h-screen flex flex-col items-center justify-center relative crt bg-black">
+
+    <!-- Schermata del Gioco (Canvas) -->
+    <div class="relative w-full max-w-5xl h-full max-h-[720px] flex items-center justify-center p-2">
+        <canvas id="pongCanvas" class="w-full h-full border-4 border-[#00ff66] rounded-lg neon-border bg-[#020a04] cursor-none"></canvas>
+
+        <!-- Overlay Menu Principale -->
+        <div id="mainMenu" class="absolute inset-0 bg-black/90 flex flex-col items-center justify-center z-30 p-6 text-center">
+            <h1 class="text-4xl md:text-6xl mb-8 neon-text tracking-widest text-[#00ff66]">PONG</h1>
+            
+            <div class="flex flex-col gap-4 w-full max-w-md">
+                <button onclick="startGame('1P')" class="btn-retro py-3 px-6 text-sm md:text-base rounded">1 GIOCATORE (vs CPU)</button>
+                <button onclick="startGame('2P')" class="btn-retro py-3 px-6 text-sm md:text-base rounded">2 GIOCATORI (Locale)</button>
+                <button onclick="startGame('TRAINING')" class="btn-retro py-3 px-6 text-sm md:text-base rounded">MODALITÀ TRAINING</button>
+                <button onclick="openSettings()" class="btn-retro py-3 px-6 text-sm md:text-base rounded border-yellow-400 text-yellow-400 hover:bg-yellow-400">IMPOSTAZIONI</button>
+            </div>
+
+            <!-- Info Controlli veloci -->
+            <div class="mt-8 text-xs text-green-400/70 space-y-2">
+                <p>P1: Tastiera (W/S) | Mouse | Gamepad</p>
+                <p>P2: Tastiera (Frecce Su/Giù) | Gamepad</p>
+                <p>Pausa: [ESC] o [P]</p>
+            </div>
+        </div>
+
+        <!-- Overlay Impostazioni -->
+        <div id="settingsMenu" class="hidden absolute inset-0 bg-black/95 flex flex-col items-center justify-center z-40 p-6 text-center">
+            <h2 class="text-2xl md:text-3xl mb-6 neon-text text-[#00ff66]">IMPOSTAZIONI</h2>
+
+            <div class="flex flex-col gap-5 w-full max-w-md text-xs md:text-sm text-left">
+                <!-- Difficoltà CPU -->
+                <div class="flex justify-between items-center">
+                    <label>Difficoltà CPU:</label>
+                    <select id="cpuDifficulty" class="bg-black border border-[#00ff66] text-[#00ff66] p-1 rounded cursor-pointer">
+                        <option value="easy">Facile</option>
+                        <option value="medium" selected>Normale</option>
+                        <option value="hard">Difficile</option>
+                        <option value="impossible">Impossibile</option>
+                    </select>
+                </div>
+
+                <!-- Controllo P1 -->
+                <div class="flex justify-between items-center">
+                    <label>Controllo P1:</label>
+                    <select id="p1ControlMode" class="bg-black border border-[#00ff66] text-[#00ff66] p-1 rounded cursor-pointer">
+                        <option value="keyboard" selected>Tastiera (W/S)</option>
+                        <option value="mouse">Mouse</option>
+                        <option value="gamepad">Gamepad / Paddle</option>
+                    </select>
+                </div>
+
+                <!-- Velocità Pallina Iniziale -->
+                <div class="flex justify-between items-center">
+                    <label>Velocità Pallina:</label>
+                    <select id="ballSpeed" class="bg-black border border-[#00ff66] text-[#00ff66] p-1 rounded cursor-pointer">
+                        <option value="4">Lenta</option>
+                        <option value="6" selected>Normale</option>
+                        <option value="9">Veloce</option>
+                    </select>
+                </div>
+
+                <!-- Punteggio Limite -->
+                <div class="flex justify-between items-center">
+                    <label>Punti per Vincere:</label>
+                    <select id="maxScore" class="bg-black border border-[#00ff66] text-[#00ff66] p-1 rounded cursor-pointer">
+                        <option value="3">3 Punti</option>
+                        <option value="5" selected>5 Punti</option>
+                        <option value="10">10 Punti</option>
+                    </select>
+                </div>
+
+                <!-- Effetto CRT Toggle -->
+                <div class="flex justify-between items-center">
+                    <label>Effetto CRT Scanlines:</label>
+                    <input type="checkbox" id="crtToggle" checked class="accent-[#00ff66] w-5 h-5 cursor-pointer">
+                </div>
+            </div>
+
+            <button onclick="closeSettings()" class="btn-retro mt-8 py-3 px-8 text-sm rounded">SALVA E TORNA</button>
+        </div>
+
+        <!-- Overlay Pausa / Game Over -->
+        <div id="pauseOverlay" class="hidden absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-30 p-6 text-center">
+            <h2 id="pauseTitle" class="text-3xl md:text-5xl mb-6 neon-text text-white">PAUSA</h2>
+            <p id="pauseSubtitle" class="text-xs md:text-sm mb-8 text-green-300"></p>
+            <div class="flex flex-col gap-4 w-full max-w-xs">
+                <button id="resumeBtn" onclick="togglePause()" class="btn-retro py-3 px-6 text-sm rounded">RIPRENDI</button>
+                <button onclick="restartGame()" class="btn-retro py-3 px-6 text-sm rounded">RICOMINCIA</button>
+                <button onclick="quitToMenu()" class="btn-retro py-3 px-6 text-sm rounded border-red-500 text-red-500 hover:bg-red-500">MENU PRINCIPALE</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Script di Gioco -->
+    <script>
+        // ==========================================
+        // SINTETIZZATORE AUDIO (Web Audio API)
+        // ==========================================
+        class SoundEffects {
+            constructor() {
+                this.ctx = null;
+            }
+
+            init() {
+                if (!this.ctx) {
+                    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+            }
+
+            playTone(freq, type, duration, vol = 0.1) {
+                if (!this.ctx) return;
+                try {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = type;
+                    osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+                    gain.gain.setValueAtTime(vol, this.ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.00001, this.ctx.currentTime + duration);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start();
+                    osc.stop(this.ctx.currentTime + duration);
+                } catch(e) {}
+            }
+
+            hitPaddle() { this.playTone(440, 'square', 0.08, 0.15); }
+            hitWall() { this.playTone(220, 'square', 0.05, 0.1); }
+            hitTarget() { this.playTone(880, 'triangle', 0.1, 0.2); }
+            score() {
+                this.playTone(587.33, 'sine', 0.1, 0.2);
+                setTimeout(() => this.playTone(880, 'sine', 0.2, 0.2), 100);
+            }
+            miss() { this.playTone(150, 'sawtooth', 0.25, 0.15); }
+        }
+
+        const audio = new SoundEffects();
+
+        // ==========================================
+        // STATO E CONFIGURAZIONE DI GIOCO
+        // ==========================================
+        const canvas = document.getElementById('pongCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Dimensioni interne del Canvas fisso per la fisica
+        const GAME_WIDTH = 800;
+        const GAME_HEIGHT = 500;
+        canvas.width = GAME_WIDTH;
+        canvas.height = GAME_HEIGHT;
+
+        let gameMode = '1P'; // '1P', '2P', 'TRAINING'
+        let isPaused = false;
+        let isGameOver = false;
+        let animationFrameId = null;
+
+        // Impostazioni personalizzabili
+        let settings = {
+            cpuDifficulty: 'medium',
+            p1ControlMode: 'keyboard', // 'keyboard', 'mouse', 'gamepad'
+            initialBallSpeed: 6,
+            maxScore: 5
+        };
+
+        // Tastiera State
+        const keys = {};
+
+        // Strutture Oggetti
+        const paddleWidth = 12;
+        const paddleHeight = 80;
+
+        const p1 = {
+            x: 20,
+            y: GAME_HEIGHT / 2 - paddleHeight / 2,
+            w: paddleWidth,
+            h: paddleHeight,
+            vy: 0,
+            speed: 8,
+            score: 0
+        };
+
+        const p2 = {
+            x: GAME_WIDTH - 20 - paddleWidth,
+            y: GAME_HEIGHT / 2 - paddleHeight / 2,
+            w: paddleWidth,
+            h: paddleHeight,
+            vy: 0,
+            speed: 8,
+            score: 0
+        };
+
+        const ball = {
+            x: GAME_WIDTH / 2,
+            y: GAME_HEIGHT / 2,
+            radius: 7,
+            vx: 0,
+            vy: 0,
+            speed: 6,
+            trail: []
+        };
+
+        // Modalità Training
+        let trainingTarget = {
+            x: GAME_WIDTH - 30,
+            y: 100,
+            w: 15,
+            h: 60,
+            vy: 3,
+            hits: 0
+        };
+
+        // Particelle per impatti
+        let particles = [];
+
+        // ==========================================
+        // GESTIONE INPUT (Tastiera, Mouse, Gamepad)
+        // ==========================================
+        window.addEventListener('keydown', (e) => {
+            keys[e.code] = true;
+            
+            // Pausa con ESC o P
+            if (e.code === 'KeyP' || e.code === 'Escape') {
+                if (!document.getElementById('mainMenu').classList.contains('hidden')) return;
+                togglePause();
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            keys[e.code] = false;
+        });
+
+        // Tracciamento del Mouse
+        canvas.addEventListener('mousemove', (e) => {
+            if (settings.p1ControlMode !== 'mouse' || isPaused || isGameOver) return;
+            const rect = canvas.getBoundingClientRect();
+            const scaleY = canvas.height / rect.height;
+            const mouseY = (e.clientY - rect.top) * scaleY;
+            p1.y = mouseY - p1.h / 2;
+            
+            // Clamping
+            if (p1.y < 0) p1.y = 0;
+            if (p1.y + p1.h > GAME_HEIGHT) p1.y = GAME_HEIGHT - p1.h;
+        });
+
+        // Gamepad API
+        function pollGamepad() {
+            const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+            if (!gamepads) return;
+
+            // P1 Gamepad
+            if (gamepads[0] && settings.p1ControlMode === 'gamepad') {
+                const gp = gamepads[0];
+                const axisY = gp.axes[1]; // Levetta analogica sinistra Y
+                if (Math.abs(axisY) > 0.1) {
+                    p1.y += axisY * p1.speed * 1.2;
+                }
+                // D-Pad
+                if (gp.buttons[12] && gp.buttons[12].pressed) p1.y -= p1.speed;
+                if (gp.buttons[13] && gp.buttons[13].pressed) p1.y += p1.speed;
+            }
+
+            // P2 Gamepad (in modalità 2 Giocatori)
+            if (gamepads[1] && gameMode === '2P') {
+                const gp = gamepads[1];
+                const axisY = gp.axes[1];
+                if (Math.abs(axisY) > 0.1) {
+                    p2.y += axisY * p2.speed * 1.2;
+                }
+                if (gp.buttons[12] && gp.buttons[12].pressed) p2.y -= p2.speed;
+                if (gp.buttons[13] && gp.buttons[13].pressed) p2.y += p2.speed;
+            }
+        }
+
+        // ==========================================
+        // LOGICA DI GIOCO E FISICA
+        // ==========================================
+        function resetBall(direction = 1) {
+            ball.x = GAME_WIDTH / 2;
+            ball.y = GAME_HEIGHT / 2;
+            ball.speed = parseInt(settings.initialBallSpeed);
+            
+            // Angolo casuale iniziale
+            const angle = (Math.random() * Math.PI / 4) - (Math.PI / 8); // -22.5° a +22.5°
+            ball.vx = direction * ball.speed * Math.cos(angle);
+            ball.vy = ball.speed * Math.sin(angle);
+            ball.trail = [];
+        }
+
+        function createParticles(x, y, color, count = 10) {
+            for (let i = 0; i < count; i++) {
+                particles.push({
+                    x: x,
+                    y: y,
+                    vx: (Math.random() - 0.5) * 6,
+                    vy: (Math.random() - 0.5) * 6,
+                    life: 1.0,
+                    color: color
+                });
+            }
+        }
+
+        function updateParticles() {
+            for (let i = particles.length - 1; i >= 0; i--) {
+                let p = particles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.04;
+                if (p.life <= 0) particles.splice(i, 1);
+            }
+        }
+
+        function updateCPU() {
+            let targetY = ball.y - p2.h / 2;
+            let reactionError = 0;
+            let cpuSpeed = p2.speed;
+
+            switch(settings.cpuDifficulty) {
+                case 'easy':
+                    cpuSpeed = 3.5;
+                    reactionError = 35;
+                    break;
+                case 'medium':
+                    cpuSpeed = 5.5;
+                    reactionError = 15;
+                    break;
+                case 'hard':
+                    cpuSpeed = 7.5;
+                    reactionError = 5;
+                    break;
+                case 'impossible':
+                    cpuSpeed = 10;
+                    reactionError = 0;
+                    break;
+            }
+
+            // Muovi solo se la pallina sta arrivando verso la CPU
+            if (ball.vx > 0 || settings.cpuDifficulty === 'impossible') {
+                let diff = (targetY + reactionError) - p2.y;
+                if (Math.abs(diff) > 5) {
+                    p2.y += Math.sign(diff) * Math.min(Math.abs(diff), cpuSpeed);
+                }
+            }
+        }
+
+        function update() {
+            if (isPaused || isGameOver) return;
+
+            pollGamepad();
+
+            // --- Movimento Giocatore 1 ---
+            if (settings.p1ControlMode === 'keyboard') {
+                if (keys['KeyW']) p1.y -= p1.speed;
+                if (keys['KeyS']) p1.y += p1.speed;
+            }
+
+            // Clamping P1
+            p1.y = Math.max(0, Math.min(GAME_HEIGHT - p1.h, p1.y));
+
+            // --- Movimento Giocatore 2 / CPU ---
+            if (gameMode === '2P') {
+                if (keys['ArrowUp']) p2.y -= p2.speed;
+                if (keys['ArrowDown']) p2.y += p2.speed;
+            } else if (gameMode === '1P') {
+                updateCPU();
+            } else if (gameMode === 'TRAINING') {
+                // Muovi bersaglio in training mode
+                trainingTarget.y += trainingTarget.vy;
+                if (trainingTarget.y <= 10 || trainingTarget.y + trainingTarget.h >= GAME_HEIGHT - 10) {
+                    trainingTarget.vy *= -1;
+                }
+            }
+
+            // Clamping P2
+            p2.y = Math.max(0, Math.min(GAME_HEIGHT - p2.h, p2.y));
+
+            // --- Movimento Pallina e Scia ---
+            ball.x += ball.vx;
+            ball.y += ball.vy;
+
+            // Aggiorna scia
+            ball.trail.push({ x: ball.x, y: ball.y });
+            if (ball.trail.length > 8) ball.trail.shift();
+
+            // Rimbalzo Pareti Superiore / Inferiore
+            if (ball.y - ball.radius <= 0) {
+                ball.y = ball.radius;
+                ball.vy *= -1;
+                audio.hitWall();
+                createParticles(ball.x, ball.y, '#00ff66', 5);
+            } else if (ball.y + ball.radius >= GAME_HEIGHT) {
+                ball.y = GAME_HEIGHT - ball.radius;
+                ball.vy *= -1;
+                audio.hitWall();
+                createParticles(ball.x, ball.y, '#00ff66', 5);
+            }
+
+            // --- Collisioni Paddle P1 ---
+            if (ball.vx < 0 && 
+                ball.x - ball.radius <= p1.x + p1.w && 
+                ball.x + ball.radius >= p1.x &&
+                ball.y >= p1.y && ball.y <= p1.y + p1.h) {
+                
+                // Punto relativo di impatto (-1 = cima, 0 = centro, 1 = fondo)
+                let collidePoint = (ball.y - (p1.y + p1.h / 2)) / (p1.h / 2);
+                let bounceAngle = collidePoint * (Math.PI / 3); // Max 60 gradi
+                
+                ball.speed += 0.3; // Incremento velocità nei palleggi
+                ball.vx = ball.speed * Math.cos(bounceAngle);
+                ball.vy = ball.speed * Math.sin(bounceAngle);
+                ball.x = p1.x + p1.w + ball.radius; // Previeni blocco
+
+                audio.hitPaddle();
+                createParticles(ball.x, ball.y, '#00ff66', 12);
+            }
+
+            // --- Collisioni P2 / Muro Training ---
+            if (gameMode !== 'TRAINING') {
+                if (ball.vx > 0 && 
+                    ball.x + ball.radius >= p2.x && 
+                    ball.x - ball.radius <= p2.x + p2.w &&
+                    ball.y >= p2.y && ball.y <= p2.y + p2.h) {
+
+                    let collidePoint = (ball.y - (p2.y + p2.h / 2)) / (p2.h / 2);
+                    let bounceAngle = collidePoint * (Math.PI / 3);
+
+                    ball.speed += 0.3;
+                    ball.vx = -ball.speed * Math.cos(bounceAngle);
+                    ball.vy = ball.speed * Math.sin(bounceAngle);
+                    ball.x = p2.x - ball.radius;
+
+                    audio.hitPaddle();
+                    createParticles(ball.x, ball.y, '#00ff66', 12);
+                }
+            } else {
+                // Modalità TRAINING: Rimbalzo Muro di fondo o Bersaglio
+                if (ball.vx > 0) {
+                    // Collisione Bersaglio
+                    if (ball.x + ball.radius >= trainingTarget.x &&
+                        ball.x - ball.radius <= trainingTarget.x + trainingTarget.w &&
+                        ball.y >= trainingTarget.y && ball.y <= trainingTarget.y + trainingTarget.h) {
+                        
+                        ball.vx *= -1;
+                        trainingTarget.hits++;
+                        p1.score += 10;
+                        audio.hitTarget();
+                        createParticles(ball.x, ball.y, '#ffcc00', 20);
+                    } 
+                    // Rimbalzo Muro Posteriore
+                    else if (ball.x + ball.radius >= GAME_WIDTH - 10) {
+                        ball.x = GAME_WIDTH - 10 - ball.radius;
+                        ball.vx *= -1;
+                        audio.hitWall();
+                        createParticles(ball.x, ball.y, '#00ff66', 6);
+                    }
+                }
+            }
+
+            // --- Punteggio & Out ---
+            if (ball.x < 0) {
+                // Punto per P2
+                audio.miss();
+                if (gameMode !== 'TRAINING') {
+                    p2.score++;
+                    checkGameOver();
+                    if (!isGameOver) resetBall(1);
+                } else {
+                    // Reset Training
+                    resetBall(1);
+                }
+            } else if (ball.x > GAME_WIDTH && gameMode !== 'TRAINING') {
+                // Punto per P1
+                audio.score();
+                p1.score++;
+                checkGameOver();
+                if (!isGameOver) resetBall(-1);
+            }
+
+            updateParticles();
+        }
+
+        function checkGameOver() {
+            const limit = parseInt(settings.maxScore);
+            if (p1.score >= limit || p2.score >= limit) {
+                isGameOver = true;
+                let winner = "";
+                if (gameMode === '1P') {
+                    winner = p1.score >= limit ? "HAI VINTO!" : "CPU HA VINTO!";
+                } else {
+                    winner = p1.score >= limit ? "GIOCATORE 1 VINCE!" : "GIOCATORE 2 VINCE!";
+                }
+                showPauseOverlay(winner, `Punteggio Finale: ${p1.score} - ${p2.score}`);
+            }
+        }
+
+        // ==========================================
+        // RENDERING GRAFICO
+        // ==========================================
+        function draw() {
+            // Pulizia Schermo con sfumatura di fondo
+            ctx.fillStyle = '#020a04';
+            ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+
+            // Linea Centrale Tratteggiata
+            ctx.strokeStyle = '#00ff6633';
+            ctx.lineWidth = 3;
+            ctx.setLineDash([10, 10]);
+            ctx.beginPath();
+            ctx.moveTo(GAME_WIDTH / 2, 0);
+            ctx.lineTo(GAME_WIDTH / 2, GAME_HEIGHT);
+            ctx.stroke();
+            ctx.setLineDash([]); // Reset
+
+            // Stile per Elementi Retro Neon
+            ctx.fillStyle = '#00ff66';
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = '#00ff66';
+
+            // --- P1 Paddle ---
+            ctx.fillRect(p1.x, p1.y, p1.w, p1.h);
+
+            // --- P2 Paddle / Campo Training ---
+            if (gameMode !== 'TRAINING') {
+                ctx.fillRect(p2.x, p2.y, p2.w, p2.h);
+            } else {
+                // Disegna Muro di fondo Training
+                ctx.fillStyle = '#00ff6655';
+                ctx.fillRect(GAME_WIDTH - 8, 0, 8, GAME_HEIGHT);
+                
+                // Disegna Bersaglio Mobile
+                ctx.fillStyle = '#ffcc00';
+                ctx.shadowColor = '#ffcc00';
+                ctx.fillRect(trainingTarget.x, trainingTarget.y, trainingTarget.w, trainingTarget.h);
+                ctx.fillStyle = '#00ff66';
+                ctx.shadowColor = '#00ff66';
+            }
+
+            // --- Scia della Pallina ---
+            for (let i = 0; i < ball.trail.length; i++) {
+                let p = ball.trail[i];
+                let alpha = (i + 1) / ball.trail.length * 0.4;
+                ctx.fillStyle = `rgba(0, 255, 102, ${alpha})`;
+                ctx.fillRect(p.x - ball.radius, p.y - ball.radius, ball.radius * 2, ball.radius * 2);
+            }
+
+            // --- Pallina ---
+            ctx.fillStyle = '#ffffff';
+            ctx.shadowColor = '#ffffff';
+            ctx.fillRect(ball.x - ball.radius, ball.y - ball.radius, ball.radius * 2, ball.radius * 2);
+
+            // --- Particelle ---
+            particles.forEach(p => {
+                ctx.fillStyle = p.color;
+                ctx.shadowColor = p.color;
+                ctx.globalAlpha = p.life;
+                ctx.fillRect(p.x, p.y, 3, 3);
+            });
+            ctx.globalAlpha = 1.0;
+
+            // Reset Shadow per Testo
+            ctx.shadowBlur = 0;
+
+            // --- Tabellone Segnapunti ---
+            ctx.font = '32px "Press Start 2P"';
+            ctx.fillStyle = '#00ff66';
+
+            if (gameMode !== 'TRAINING') {
+                ctx.fillText(p1.score, GAME_WIDTH / 4, 50);
+                ctx.fillText(p2.score, (3 * GAME_WIDTH) / 4 - 30, 50);
+            } else {
+                ctx.font = '16px "Press Start 2P"';
+                ctx.fillText(`PUNTI: ${p1.score}`, 40, 40);
+                ctx.fillText(`BERSAGLI: ${trainingTarget.hits}`, 40, 70);
+            }
+        }
+
+        // ==========================================
+        // GAME LOOP
+        // ==========================================
+        function loop() {
+            update();
+            draw();
+            animationFrameId = requestAnimationFrame(loop);
+        }
+
+        // ==========================================
+        // CONTROLLI DI STATO E MENU
+        // ==========================================
+        function startGame(mode) {
+            audio.init();
+            gameMode = mode;
+            p1.score = 0;
+            p2.score = 0;
+            trainingTarget.hits = 0;
+            isPaused = false;
+            isGameOver = false;
+
+            document.getElementById('mainMenu').classList.add('hidden');
+            document.getElementById('pauseOverlay').classList.add('hidden');
+
+            resetBall(1);
+
+            if (!animationFrameId) {
+                loop();
+            }
+        }
+
+        function togglePause() {
+            if (isGameOver) return;
+            isPaused = !isPaused;
+            const overlay = document.getElementById('pauseOverlay');
+            if (isPaused) {
+                showPauseOverlay("PAUSA", "Premi ESC per riprendere");
+            } else {
+                overlay.classList.add('hidden');
+            }
+        }
+
+        function showPauseOverlay(title, subtitle) {
+            document.getElementById('pauseTitle').innerText = title;
+            document.getElementById('pauseSubtitle').innerText = subtitle;
+            document.getElementById('resumeBtn').style.display = isGameOver ? 'none' : 'block';
+            document.getElementById('pauseOverlay').classList.remove('hidden');
+        }
+
+        function restartGame() {
+            startGame(gameMode);
+        }
+
+        function quitToMenu() {
+            isPaused = false;
+            isGameOver = false;
+            document.getElementById('pauseOverlay').classList.add('hidden');
+            document.getElementById('mainMenu').classList.remove('hidden');
+        }
+
+        function openSettings() {
+            document.getElementById('settingsMenu').classList.remove('hidden');
+        }
+
+        function closeSettings() {
+            settings.cpuDifficulty = document.getElementById('cpuDifficulty').value;
+            settings.p1ControlMode = document.getElementById('p1ControlMode').value;
+            settings.initialBallSpeed = parseInt(document.getElementById('ballSpeed').value);
+            settings.maxScore = parseInt(document.getElementById('maxScore').value);
+
+            // Toggle CRT scanlines
+            const crtToggle = document.getElementById('crtToggle').checked;
+            if (crtToggle) {
+                document.body.classList.add('crt');
+            } else {
+                document.body.classList.remove('crt');
+            }
+
+            document.getElementById('settingsMenu').classList.add('hidden');
+        }
+
+        // Render Iniziale di sfondo
+        draw();
+    </script>
+</body>
+</html>
