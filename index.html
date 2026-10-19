@@ -284,19 +284,46 @@
             keys[e.code] = false;
         });
 
-        // Tracciamento del Mouse
-        canvas.addEventListener('mousemove', (e) => {
+        // Tracciamento del Mouse (gestisce sia il movimento relativo locked che quello assoluto)
+        window.addEventListener('mousemove', (e) => {
             if (settings.p1ControlMode !== 'mouse' || isPaused || isGameOver) return;
-            const rect = canvas.getBoundingClientRect();
-            const scaleY = canvas.height / rect.height;
-            const mouseY = (e.clientY - rect.top) * scaleY;
-            p1.y = mouseY - p1.h / 2;
-            
-            // Clamping
+        
+            if (document.pointerLockElement === canvas) {
+                // Cursore bloccato: usa lo spostamento relativo (movementY)
+                // scaleY corregge la scala se il canvas è ridimensionato via CSS
+                const rect = canvas.getBoundingClientRect();
+                const scaleY = GAME_HEIGHT / rect.height;
+                
+                p1.y += e.movementY * scaleY;
+            } else {
+                // Fallback: cursore non bloccato (posizione assoluta)
+                const rect = canvas.getBoundingClientRect();
+                const scaleY = GAME_HEIGHT / rect.height;
+                const mouseY = (e.clientY - rect.top) * scaleY;
+                p1.y = mouseY - p1.h / 2;
+            }
+        
+            // Clamping (mantiene la paletta nei limiti del campo)
             if (p1.y < 0) p1.y = 0;
             if (p1.y + p1.h > GAME_HEIGHT) p1.y = GAME_HEIGHT - p1.h;
         });
 
+        // Cliccando sul canvas si attiva il Pointer Lock (se la modalità di controllo è "mouse")
+        canvas.addEventListener('click', () => {
+            if (settings.p1ControlMode === 'mouse' && document.pointerLockElement !== canvas) {
+                canvas.requestPointerLock();
+            }
+        });
+
+        // Gestione del cambio di stato del Pointer Lock
+        document.addEventListener('pointerlockchange', () => {
+            if (document.pointerLockElement === canvas) {
+                console.log('Pointer Lock attivo');
+            } else {
+                console.log('Pointer Lock disattivato (ESC premuto)');
+            }
+        });
+        
         // Gamepad API
         function pollGamepad() {
             const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
